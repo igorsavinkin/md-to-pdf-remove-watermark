@@ -25,14 +25,29 @@ async function main() {
 
   cli.watching();
 
+  // Keep the process alive
+  const keepAlive = setInterval(() => {
+    logger.debug('Keep-alive heartbeat');
+  }, 60000);
+
   const shutdown = async (signal) => {
     logger.info({ signal }, 'Shutting down...');
+    clearInterval(keepAlive);
     watcher.close();
     process.exit(0);
   };
 
   process.on('SIGINT', () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
+  
+  process.on('unhandledRejection', (reason, promise) => {
+    logger.error({ reason: reason?.message, stack: reason?.stack }, 'Unhandled rejection');
+  });
+  
+  process.on('uncaughtException', (err) => {
+    logger.fatal({ error: err.message, stack: err.stack }, 'Uncaught exception');
+    process.exit(1);
+  });
 }
 
 main().catch((err) => {

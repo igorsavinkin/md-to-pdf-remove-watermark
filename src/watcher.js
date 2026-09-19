@@ -5,20 +5,27 @@ import { waitForFileStable } from './utils/file-ops.js';
 
 export function createWatcher(inputDir, onFileReady) {
   const processing = new Set();
-
   const donePattern = /[\\/]done[\\/]/;
 
-  const watcher = chokidar.watch(path.join(inputDir, '**', '*.md'), {
+  logger.debug({ inputDir }, 'Watcher starting');
+
+  const watcher = chokidar.watch(inputDir, {
     persistent: true,
     ignoreInitial: true,
-    ignored: (filePath) => donePattern.test(filePath),
     awaitWriteFinish: {
       stabilityThreshold: 1000,
       pollInterval: 500,
     },
   });
 
+  watcher.on('ready', () => {
+    logger.debug('Watcher ready and watching for changes');
+  });
+
   watcher.on('add', async (filePath) => {
+    if (donePattern.test(filePath)) return;
+    if (!filePath.endsWith('.md')) return;
+
     const absPath = path.resolve(filePath);
     if (processing.has(absPath)) {
       logger.debug({ file: absPath }, 'File already being processed, skipping');
@@ -39,7 +46,7 @@ export function createWatcher(inputDir, onFileReady) {
   });
 
   watcher.on('error', (err) => {
-    logger.error({ error: err.message }, 'Watcher error');
+    logger.error({ error: err.message, stack: err.stack }, 'Watcher error');
   });
 
   return watcher;
