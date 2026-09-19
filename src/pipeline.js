@@ -6,6 +6,7 @@ import { retry } from './utils/retry.js';
 import { ensureDir, safeMove } from './utils/file-ops.js';
 import { convertMarkdownToPdf } from './converters/markdown-to-pdf.js';
 import { removeWatermark } from './removers/local-remover.js';
+import { embedImages } from './utils/image-embedder.js';
 import * as cli from './utils/cli.js';
 
 export async function processFile(mdPath, config) {
@@ -27,9 +28,12 @@ export async function processFile(mdPath, config) {
     const markdownContent = await fs.readFile(mdPath, 'utf-8');
     logger.debug({ correlationId, size: markdownContent.length }, 'Markdown read');
 
+    cli.processingStep('embedding-images');
+    const enrichedMarkdown = await embedImages(markdownContent, mdPath);
+
     cli.processingStep('converting');
     const pdfBuffer = await retry(
-      () => convertMarkdownToPdf(markdownContent, `${basename}.pdf`),
+      () => convertMarkdownToPdf(enrichedMarkdown, `${basename}.pdf`),
       {
         maxRetries: config.pipeline.maxRetries,
         retryableErrors: ['RATE_LIMIT', 'SERVICE_UNAVAILABLE'],
