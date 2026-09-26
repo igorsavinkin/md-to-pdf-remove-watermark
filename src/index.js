@@ -4,6 +4,28 @@ import { createWatcher } from './watcher.js';
 import { processFile } from './pipeline.js';
 import { ensureDir } from './utils/file-ops.js';
 import * as cli from './utils/cli.js';
+import fs from 'fs/promises';
+import path from 'path';
+
+async function scanExistingFiles(inputDir, onFileReady) {
+  const donePattern = /[\\/]done[\\/]/;
+  const entries = await fs.readdir(inputDir, { withFileTypes: true, recursive: true });
+  const mdFiles = entries
+    .filter((e) => e.isFile() && e.name.endsWith('.md'))
+    .map((e) => path.join(e.parentPath || e.path, e.name))
+    .filter((p) => !donePattern.test(p));
+
+  if (mdFiles.length === 0) return;
+
+  logger.info({ count: mdFiles.length }, 'Found existing markdown files');
+  for (const filePath of mdFiles) {
+    try {
+      await onFileReady(filePath);
+    } catch (err) {
+      logger.error({ file: filePath, error: err.message }, 'File processing failed');
+    }
+  }
+}
 
 async function main() {
   await ensureDir(config.watcher.inputDir);
@@ -15,13 +37,17 @@ async function main() {
 
   cli.banner(config);
 
-  const watcher = createWatcher(config.watcher.inputDir, async (mdPath) => {
+  const onFileReady = async (mdPath) => {
     try {
       await processFile(mdPath, config);
     } catch (err) {
       logger.error({ file: mdPath, error: err.message }, 'File processing failed');
     }
-  });
+  };
+
+  await scanExistingFiles(config.watcher.inputDir, onFileReady);
+
+  const watcher = createWatcher(config.watcher.inputDir, onFileReady);
 
   cli.watching();
 
